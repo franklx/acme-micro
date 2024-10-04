@@ -1,16 +1,11 @@
-use lazy_static::lazy_static;
+use base64::Engine;
 use serde::de::DeserializeOwned;
 
 use crate::error::*;
 use crate::req::req_safe_read_body;
 
-lazy_static! {
-    static ref BASE64_CONFIG: base64::Config =
-        base64::Config::new(base64::CharacterSet::UrlSafe, false);
-}
-
 pub(crate) fn base64url<T: ?Sized + AsRef<[u8]>>(input: &T) -> String {
-    base64::encode_config(input, *BASE64_CONFIG)
+    base64::prelude::BASE64_URL_SAFE_NO_PAD.encode(input)
 }
 
 pub(crate) fn read_json<T: DeserializeOwned>(res: ureq::Response) -> Result<T> {
