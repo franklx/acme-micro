@@ -58,7 +58,7 @@ pub(crate) fn create_csr(pkey: &PKey<pkey::Private>, domains: &[&str]) -> Result
     let mut req_bld = X509ReqBuilder::new()?;
 
     // set private/public key in builder
-    req_bld.set_pubkey(&pkey)?;
+    req_bld.set_pubkey(pkey)?;
 
     // set all domains as alt names
     let mut stack = Stack::new()?;

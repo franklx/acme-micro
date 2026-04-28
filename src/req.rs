@@ -53,12 +53,10 @@ pub(crate) fn req_handle_error(
     let problem = if res.body().mime_type() == Some("application/problem+json") {
         // if we were sent a problem+json, deserialize it
         let body = req_safe_read_body(res);
-        serde_json::from_str(&body).unwrap_or_else(|e| ApiProblem {
+        serde_json::from_str(&body).unwrap_or_else(|err| ApiProblem {
             _type: "problemJsonFail".into(),
             detail: Some(format!(
-                "Failed to deserialize application/problem+json ({}) body: {}",
-                e.to_string(),
-                body
+                "Failed to deserialize application/problem+json ({err}) body: {body}",
             )),
             subproblems: None,
         })
