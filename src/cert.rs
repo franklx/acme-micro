@@ -1,6 +1,5 @@
-use crate::error::Result;
+use crate::error::*;
 use chrono::NaiveDateTime;
-use lazy_static::lazy_static;
 use openssl::{
     ec::{Asn1Flag, EcGroup, EcKey},
     hash::MessageDigest,
@@ -10,12 +9,16 @@ use openssl::{
     stack::Stack,
     x509::{extension::SubjectAlternativeName, X509Req, X509ReqBuilder, X509},
 };
+use std::sync::OnceLock;
 
-use crate::error::*;
+pub(crate) fn ec_group_p256() -> &'static EcGroup {
+    static EC_GROUP_P256: OnceLock<EcGroup> = OnceLock::new();
+    EC_GROUP_P256.get_or_init(|| ec_group(Nid::X9_62_PRIME256V1))
+}
 
-lazy_static! {
-    pub(crate) static ref EC_GROUP_P256: EcGroup = ec_group(Nid::X9_62_PRIME256V1);
-    pub(crate) static ref EC_GROUP_P384: EcGroup = ec_group(Nid::SECP384R1);
+pub(crate) fn ec_group_p384() -> &'static EcGroup {
+    static EC_GROUP_P384: OnceLock<EcGroup> = OnceLock::new();
+    EC_GROUP_P384.get_or_init(|| ec_group(Nid::SECP384R1))
 }
 
 fn ec_group(nid: Nid) -> EcGroup {
@@ -37,14 +40,14 @@ pub fn create_rsa_key(bits: u32) -> Result<PKey<pkey::Private>> {
 
 /// Make a P-256 private key (from which we can derive a public key).
 pub fn create_p256_key() -> Result<PKey<pkey::Private>> {
-    let pri_key_ec = EcKey::generate(&*EC_GROUP_P256)?;
+    let pri_key_ec = EcKey::generate(ec_group_p256())?;
     let pkey = PKey::from_ec_key(pri_key_ec)?;
     Ok(pkey)
 }
 
 /// Make a P-384 private key pair (from which we can derive a public key).
 pub fn create_p384_key() -> Result<PKey<pkey::Private>> {
-    let pri_key_ec = EcKey::generate(&*EC_GROUP_P384)?;
+    let pri_key_ec = EcKey::generate(ec_group_p384())?;
     let pkey = PKey::from_ec_key(pri_key_ec)?;
     Ok(pkey)
 }

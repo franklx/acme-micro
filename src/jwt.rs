@@ -1,4 +1,7 @@
-use crate::{acc::AcmeKey, cert::EC_GROUP_P256, util::base64url, Result};
+use crate::acc::AcmeKey;
+use crate::cert::ec_group_p256;
+use crate::util::base64url;
+use crate::Result;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
@@ -61,7 +64,7 @@ impl TryFrom<&AcmeKey> for Jwk {
         let mut x = openssl::bn::BigNum::new()?;
         let mut y = openssl::bn::BigNum::new()?;
         a.private_key().public_key().affine_coordinates_gfp(
-            &*EC_GROUP_P256,
+            ec_group_p256(),
             &mut x,
             &mut y,
             &mut ctx,
