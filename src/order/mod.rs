@@ -26,6 +26,7 @@ use crate::{
 };
 use openssl::pkey::{self, PKey};
 use std::{sync::Arc, thread, time::Duration};
+use ureq::{http, Body};
 
 mod auth;
 
@@ -68,14 +69,14 @@ pub(crate) fn refresh_order(
 }
 
 #[cfg(not(test))]
-fn api_order_of(res: ureq::Response, _want_status: &str) -> Result<ApiOrder> {
+fn api_order_of(res: http::Response<Body>, _want_status: &str) -> Result<ApiOrder> {
     read_json(res)
 }
 
 #[cfg(test)]
 // our test rig requires the order to be in `want_status`
-fn api_order_of(res: ureq::Response, want_status: &str) -> Result<ApiOrder> {
-    let s = res.into_string()?;
+fn api_order_of(mut res: http::Response<Body>, want_status: &str) -> Result<ApiOrder> {
+    let s = res.body_mut().read_to_string().map_err(|e| e.into_io())?;
     #[allow(clippy::trivial_regex)]
     let re = regex::Regex::new("<STATUS>").unwrap();
     let b = re.replace_all(&s, want_status).to_string();
@@ -286,13 +287,13 @@ impl CertOrder {
             .ok_or_else(|| anyhow::anyhow!("certificate url"))?;
         let inner = self.order.inner;
 
-        let res = inner.transport.call(&url, &ApiEmptyString)?;
+        let mut res = inner.transport.call(&url, &ApiEmptyString)?;
 
         // save key and cert into persistence
         let pkey_pem_bytes = self.private_key.private_key_to_pem_pkcs8()?;
         let pkey_pem = String::from_utf8_lossy(&pkey_pem_bytes);
 
-        let cert = res.into_string()?;
+        let cert = res.body_mut().read_to_string().map_err(|e| e.into_io())?;
 
         Ok(Certificate::new(pkey_pem.to_string(), cert))
     }
