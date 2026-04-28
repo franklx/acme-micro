@@ -6,6 +6,7 @@ use std::{
     convert::TryInto,
     sync::{Arc, Mutex},
 };
+use ureq::{http, Body};
 
 use crate::acc::AcmeKey;
 use crate::error::*;
@@ -46,12 +47,16 @@ impl Transport {
     }
 
     /// Make call using the full jwk. Only for the first newAccount request.
-    pub fn call_jwk<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<ureq::Response> {
+    pub fn call_jwk<T: Serialize + ?Sized>(
+        &self,
+        url: &str,
+        body: &T,
+    ) -> Result<http::Response<Body>> {
         self.do_call(url, body, jws_with_jwk)
     }
 
     /// Make call using the key id
-    pub fn call<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<ureq::Response> {
+    pub fn call<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<http::Response<Body>> {
         self.do_call(url, body, jws_with_kid)
     }
 
@@ -60,7 +65,7 @@ impl Transport {
         url: &str,
         body: &T,
         make_body: F,
-    ) -> Result<ureq::Response> {
+    ) -> Result<http::Response<Body>> {
         // The ACME API may at any point invalidate all nonces. If we detect such an
         // error, we loop until the server accepts the nonce.
         loop {
@@ -115,16 +120,13 @@ impl NoncePool {
         }
     }
 
-    fn extract_nonce(&self, res: &std::result::Result<ureq::Response, ureq::Error>) {
-        let res = match res {
-            Ok(res) => res,
-            Err(ureq::Error::Status(_, res)) => res,
-            Err(ureq::Error::Transport(_)) => return,
-        };
+    fn extract_nonce(&self, res: &Result<http::Response<Body>, ureq::Error>) {
+        let Ok(res) = res else { return };
 
-        if let Some(nonce) = res.header("replay-nonce") {
+        if let Some(nonce) = res.headers().get("replay-nonce") {
             trace!("Extract nonce");
             let mut pool = self.pool.lock().unwrap();
+            let Ok(nonce) = nonce.to_str() else { return };
             pool.push_back(nonce.to_string());
             if pool.len() > 10 {
                 pool.pop_front();
@@ -141,16 +143,7 @@ impl NoncePool {
             }
         }
         debug!("Request new nonce");
-        let res = req_head(&self.nonce_url);
-
-        let res = match res {
-            Ok(res) => res,
-            Err(ureq::Error::Status(_, res)) => res,
-            Err(ureq::Error::Transport(err)) => {
-                return Err(Error::new(err).context("Transport error during request"))
-            }
-        };
-
+        let res = req_head(&self.nonce_url)?;
         Ok(req_expect_header(&res, "replay-nonce")?)
     }
 }
