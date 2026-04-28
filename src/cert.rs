@@ -1,4 +1,5 @@
 use crate::error::Result;
+use chrono::NaiveDateTime;
 use lazy_static::lazy_static;
 use openssl::{
     ec::{Asn1Flag, EcGroup, EcKey},
@@ -142,34 +143,22 @@ impl Certificate {
         // load as x509
         let x509 = X509::from_pem(self.certificate.as_bytes())?;
 
-        // convert asn1 time to Tm
+        // convert asn1 time to expiry date
         let not_after = format!("{}", x509.not_after());
-        // Display trait produces this format, which is kinda dumb.
-        // Apr 19 08:48:46 2019 GMT
+        // Display trait produces this format: "Apr 19 08:48:46 2019 GMT"
         let expires = parse_date(&not_after)?;
-        let dur = expires - time::OffsetDateTime::now_utc();
+        let now = chrono::Utc::now();
+        let dur = expires.signed_duration_since(now);
 
-        Ok(dur.whole_days())
+        Ok(dur.num_days())
     }
 }
 
-fn parse_date(s: &str) -> Result<time::OffsetDateTime> {
+fn parse_date(s: &str) -> Result<chrono::DateTime<chrono::Utc>> {
     debug!("Parse date/time: {}", s);
-    use time_fmt::parse::TimeZoneSpecifier;
-    use time_tz::{Offset, TimeZone};
-    let (datetime, zonespecifier) =
-        time_fmt::parse::parse_date_time_maybe_with_zone("%h %e %H:%M:%S %Y %Z", s)
-            .context("parsing of date failed")?;
-    let offset_datetime = match zonespecifier {
-        Some(TimeZoneSpecifier::Offset(offset)) => datetime.assume_offset(offset),
-        None => datetime.assume_utc(),
-        Some(TimeZoneSpecifier::Name(name)) => {
-            let zone = time_tz::timezones::get_by_name(name)
-                .ok_or(anyhow::anyhow!("unknown timezone specified"))?;
-            datetime.assume_offset(zone.get_offset_primary().to_utc())
-        }
-    };
-    Ok(offset_datetime)
+    // OpenSSL formats ASN1_TIME as "May  3 07:40:15 2019 GMT"
+    let dt = NaiveDateTime::parse_from_str(s, "%b %d %H:%M:%S %Y %Z")?;
+    Ok(dt.and_utc())
 }
 
 #[cfg(test)]
@@ -181,11 +170,6 @@ mod test {
         let x = parse_date("May  3 07:40:15 2019 GMT")
             .context("input date parsing failed")
             .unwrap();
-        assert_eq!(
-            time_fmt::format::format_offset_date_time("%F %T", x)
-                .context("date formatting failed")
-                .unwrap(),
-            "2019-05-03 07:40:15"
-        );
+        assert_eq!(x.format("%F %T").to_string(), "2019-05-03 07:40:15");
     }
 }
