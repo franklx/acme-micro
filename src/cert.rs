@@ -1,5 +1,5 @@
-use crate::error::Result;
-use lazy_static::lazy_static;
+use crate::error::*;
+use chrono::NaiveDateTime;
 use openssl::{
     ec::{Asn1Flag, EcGroup, EcKey},
     hash::MessageDigest,
@@ -9,12 +9,16 @@ use openssl::{
     stack::Stack,
     x509::{extension::SubjectAlternativeName, X509Req, X509ReqBuilder, X509},
 };
+use std::sync::OnceLock;
 
-use crate::error::*;
+pub(crate) fn ec_group_p256() -> &'static EcGroup {
+    static EC_GROUP_P256: OnceLock<EcGroup> = OnceLock::new();
+    EC_GROUP_P256.get_or_init(|| ec_group(Nid::X9_62_PRIME256V1))
+}
 
-lazy_static! {
-    pub(crate) static ref EC_GROUP_P256: EcGroup = ec_group(Nid::X9_62_PRIME256V1);
-    pub(crate) static ref EC_GROUP_P384: EcGroup = ec_group(Nid::SECP384R1);
+pub(crate) fn ec_group_p384() -> &'static EcGroup {
+    static EC_GROUP_P384: OnceLock<EcGroup> = OnceLock::new();
+    EC_GROUP_P384.get_or_init(|| ec_group(Nid::SECP384R1))
 }
 
 fn ec_group(nid: Nid) -> EcGroup {
@@ -36,14 +40,14 @@ pub fn create_rsa_key(bits: u32) -> Result<PKey<pkey::Private>> {
 
 /// Make a P-256 private key (from which we can derive a public key).
 pub fn create_p256_key() -> Result<PKey<pkey::Private>> {
-    let pri_key_ec = EcKey::generate(&*EC_GROUP_P256)?;
+    let pri_key_ec = EcKey::generate(ec_group_p256())?;
     let pkey = PKey::from_ec_key(pri_key_ec)?;
     Ok(pkey)
 }
 
 /// Make a P-384 private key pair (from which we can derive a public key).
 pub fn create_p384_key() -> Result<PKey<pkey::Private>> {
-    let pri_key_ec = EcKey::generate(&*EC_GROUP_P384)?;
+    let pri_key_ec = EcKey::generate(ec_group_p384())?;
     let pkey = PKey::from_ec_key(pri_key_ec)?;
     Ok(pkey)
 }
@@ -54,7 +58,7 @@ pub(crate) fn create_csr(pkey: &PKey<pkey::Private>, domains: &[&str]) -> Result
     let mut req_bld = X509ReqBuilder::new()?;
 
     // set private/public key in builder
-    req_bld.set_pubkey(&pkey)?;
+    req_bld.set_pubkey(pkey)?;
 
     // set all domains as alt names
     let mut stack = Stack::new()?;
@@ -142,34 +146,22 @@ impl Certificate {
         // load as x509
         let x509 = X509::from_pem(self.certificate.as_bytes())?;
 
-        // convert asn1 time to Tm
+        // convert asn1 time to expiry date
         let not_after = format!("{}", x509.not_after());
-        // Display trait produces this format, which is kinda dumb.
-        // Apr 19 08:48:46 2019 GMT
+        // Display trait produces this format: "Apr 19 08:48:46 2019 GMT"
         let expires = parse_date(&not_after)?;
-        let dur = expires - time::OffsetDateTime::now_utc();
+        let now = chrono::Utc::now();
+        let dur = expires.signed_duration_since(now);
 
-        Ok(dur.whole_days())
+        Ok(dur.num_days())
     }
 }
 
-fn parse_date(s: &str) -> Result<time::OffsetDateTime> {
+fn parse_date(s: &str) -> Result<chrono::DateTime<chrono::Utc>> {
     debug!("Parse date/time: {}", s);
-    use time_fmt::parse::TimeZoneSpecifier;
-    use time_tz::{Offset, TimeZone};
-    let (datetime, zonespecifier) =
-        time_fmt::parse::parse_date_time_maybe_with_zone("%h %e %H:%M:%S %Y %Z", s)
-            .context("parsing of date failed")?;
-    let offset_datetime = match zonespecifier {
-        Some(TimeZoneSpecifier::Offset(offset)) => datetime.assume_offset(offset),
-        None => datetime.assume_utc(),
-        Some(TimeZoneSpecifier::Name(name)) => {
-            let zone = time_tz::timezones::get_by_name(name)
-                .ok_or(anyhow::anyhow!("unknown timezone specified"))?;
-            datetime.assume_offset(zone.get_offset_primary().to_utc())
-        }
-    };
-    Ok(offset_datetime)
+    // OpenSSL formats ASN1_TIME as "May  3 07:40:15 2019 GMT"
+    let dt = NaiveDateTime::parse_from_str(s, "%b %d %H:%M:%S %Y %Z")?;
+    Ok(dt.and_utc())
 }
 
 #[cfg(test)]
@@ -181,11 +173,6 @@ mod test {
         let x = parse_date("May  3 07:40:15 2019 GMT")
             .context("input date parsing failed")
             .unwrap();
-        assert_eq!(
-            time_fmt::format::format_offset_date_time("%F %T", x)
-                .context("date formatting failed")
-                .unwrap(),
-            "2019-05-03 07:40:15"
-        );
+        assert_eq!(x.format("%F %T").to_string(), "2019-05-03 07:40:15");
     }
 }

@@ -4,7 +4,7 @@ description = "Library for requesting certificates from an ACME provider (acme-l
 license = "MIT"
 repository = "https://github.com/kpcyrd/acme-micro"
 readme = "README.md"
-version = "0.13.0+frk.2"
+version = "0.14.0+frk.2"
 authors = [
     "Martin Algesten <martin@algesten.se>",
     "kpcyrd <git@rxv.cc>",
@@ -21,19 +21,15 @@ vendored = ["openssl/vendored"]
 [dependencies]
 anyhow = "1.0"
 base64 = "0.22"
-lazy_static = "1"
+chrono = "0.4"
 log = "0.4"
 openssl = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-time = { version = "0.3", features = ["local-offset"] }
-time-fmt = "0.3"
-time-tz = "1"
-ureq = "2"
+ureq = "3"
 
 [dev-dependencies]
 doc-comment = "0.3"
 env_logger = { version = "0.11", default-features = false }
-futures = "0.1.25"
-hyper = "0.12"
 regex = "1.4"
+tiny_http = "0.12"

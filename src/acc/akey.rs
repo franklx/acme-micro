@@ -1,8 +1,7 @@
+use crate::cert::ec_group_p256;
+use crate::error::*;
 use openssl::ec::EcKey;
 use openssl::pkey;
-
-use crate::cert::EC_GROUP_P256;
-use crate::error::*;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AcmeKey {
@@ -13,7 +12,7 @@ pub(crate) struct AcmeKey {
 
 impl AcmeKey {
     pub(crate) fn new() -> Result<AcmeKey> {
-        let pri_key = EcKey::generate(&*EC_GROUP_P256).context("EcKey")?;
+        let pri_key = EcKey::generate(ec_group_p256()).context("EcKey")?;
         Ok(Self::from_key(pri_key))
     }
 
